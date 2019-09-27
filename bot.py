@@ -7,6 +7,7 @@ import random
 import subprocess
 from config import conf
 import common
+import scraping 
 
 bot = telebot.TeleBot(conf['telegram_token'])
 
@@ -29,7 +30,8 @@ def send_msg(message):
         kind  = '/thought'
     id = message.text.replace(kind+" ", "")
     print(id)
-    output = common._useMysql('getPhrase', id)
+    output = scraping.scrap(id)
+    # output = common._useMysql('getPhrase', id)
     bot.send_message(message.chat.id, output)
 
 # let's bot
