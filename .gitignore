@@ -2,3 +2,10 @@ pics/*
 *.pyc
 .log
 bot
+
+# ide related
+.vscode
+.idea
+
+# temporary html created to see content in browser for debugging purposes
+temp.html
