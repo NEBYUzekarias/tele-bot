@@ -14,3 +14,9 @@ conf = {
         'raise_on_warnings': True
     }
 }
+
+help_msg = \
+"""
+/campus _your admission number_ - shows your assigned campus for given admission number
+Example. typing `/campus 213114` will show assigned campus for the student with admission number 213114
+"""
