@@ -12,7 +12,7 @@ def setup_profile_request():
     response = requests.get(
         'http://portal.neaea.gov.et/Home/Student', headers=headers)
 
-    must_cookies = {}   # can be cookie jar
+    must_cookies = {}  # can be cookie jar
     must_cookies_names = ['__RequestVerificationToken']
     for cookie_name in must_cookies_names:
         must_cookies[cookie_name] = response.cookies.get(cookie_name)
@@ -30,6 +30,46 @@ def setup_profile_request():
     return request
 
 
+from collections import namedtuple
+
+request_params_fields = ('method', 'url', 'headers', 'cookies', 'params', 'data')
+RequestParams = namedtuple(
+    'RequestParams',
+    request_params_fields,
+    defaults=(None,) * len(request_params_fields)  # to make fields optional when creating object
+)
+
+
+def profile_request_params():
+    headers = {
+        'user-agent': ('Mozilla/5.0'),
+    }
+
+    response = requests.get(
+        'http://portal.neaea.gov.et/Home/Student', headers=headers)
+
+    must_cookies = {}  # can be cookie jar
+    must_cookies_names = ['__RequestVerificationToken']
+    for cookie_name in must_cookies_names:
+        must_cookies[cookie_name] = response.cookies.get(cookie_name)
+
+    html = Selector(text=response.text)
+    csrf_token = html.xpath("/html/body/div[2]/div/form/input/@value").get()
+
+    form_data = {
+        '__RequestVerificationToken': csrf_token,
+        'admissionNumber': None  # to be set
+    }
+
+    return RequestParams(
+        method='POST',
+        url='http://portal.neaea.gov.et/Student/StudentDetailsx',
+        headers=headers,
+        cookies=must_cookies,
+        data=form_data
+    )
+
+
 def extract_profile_data(profile_response):
     return profile_response.json()[0]
 
@@ -40,11 +80,29 @@ def setup_country_request():
     }
 
     query_params = {
-        'id': None    # to be set
+        'id': None  # to be set
     }
     request = requests.Request('GET', url='http://portal.neaea.gov.et/Student/Institute',
                                headers=headers, params=query_params)
     return request
+
+
+def country_request_params():
+    headers = {
+        'user-agent': ('Mozilla/5.0'),
+    }
+
+    query_params = {
+        'id': None  # to be set
+    }
+    request = requests.Request('GET', url='http://portal.neaea.gov.et/Student/Institute',
+                               headers=headers, params=query_params)
+    return RequestParams(
+        method='GET',
+        url='http://portal.neaea.gov.et/Student/Institute',
+        headers=headers,
+        params=query_params
+    )
 
 
 def extract_country_data():
