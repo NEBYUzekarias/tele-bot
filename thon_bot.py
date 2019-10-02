@@ -4,8 +4,9 @@ from telethon import TelegramClient, events
 
 from config import conf, help_msg
 from direct_request import get_student_info
-
 import logging
+
+
 logging.basicConfig(format='[%(levelname) 5s/%(asctime)s] %(name)s: %(message)s',
                     level=logging.WARNING)
 
@@ -30,7 +31,8 @@ async def send_welcome(event):
 @bot.on(events.NewMessage)
 async def show_campus_info(event):
     # remove '/campus' and get clean argument
-    admission_number = event.text
+    # i have to check event.text with "await event.text()"
+    admission_number =  event.text
     # validate admission number (must be 6 digits)
     if len(admission_number) != 6 or not admission_number.isdigit():
         await event.reply(INCORRECT_ADMISSION_ERROR)
