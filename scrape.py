@@ -1,4 +1,6 @@
+from collections import namedtuple
 import requests
+import aiohttp
 from parsel import Selector
 
 from utils import timer
@@ -30,14 +32,51 @@ def setup_profile_request():
     return request
 
 
-from collections import namedtuple
-
-request_params_fields = ('method', 'url', 'headers', 'cookies', 'params', 'data')
+request_params_fields = ('method', 'url', 'headers',
+                         'cookies', 'params', 'data')
 RequestParams = namedtuple(
     'RequestParams',
     request_params_fields,
-    defaults=(None,) * len(request_params_fields)  # to make fields optional when creating object
+    # to make fields optional when creating object
+    defaults=(None,) * len(request_params_fields)
 )
+
+
+def campus_request_params(session):
+    headers = {
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36',
+        'Referer': 'http://twelve.neaea.gov.et/Home/Placement',
+        'X-Requested-With': 'XMLHttpRequest'
+    }
+
+    response = requests.get(
+        'http://twelve.neaea.gov.et/Home/Placement')
+
+    must_cookies = {}  # can be cookie jar
+    must_cookies_names = ['__RequestVerificationToken']
+    for cookie_name in must_cookies_names:
+        must_cookies[cookie_name] = response.cookies.get(cookie_name)
+    # print('must_cookies:', must_cookies)
+
+    html_text = response.text
+
+    html = Selector(text=html_text)
+    csrf_token = html.xpath(
+        '//*[@id="searchform"]/div[1]/div[2]/form/input/@value').get()
+
+    form_data = {
+        '__RequestVerificationToken': csrf_token,
+        'Registration_Number': None  # to be set
+    }
+    # print('form_data:', form_data)
+
+    return RequestParams(
+        method='POST',
+        url='http://twelve.neaea.gov.et/Home/Placement',
+        headers=headers,
+        cookies=must_cookies,
+        data=form_data
+    )
 
 
 def profile_request_params():

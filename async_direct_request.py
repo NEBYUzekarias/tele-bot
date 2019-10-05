@@ -2,9 +2,10 @@ import requests
 import asyncio
 import aiohttp
 import logging
-from scrape import profile_request_params, country_request_params
+from scrape import profile_request_params, country_request_params, campus_request_params
 
 # setup error message texts
+NO_MDEBA_DATA_TEXT = "There is no data regarding your assigned university on National Examination Agency system. Please, try again later"
 BAD_RESPONSE_TEXT = "National Examination Agency system could not get your result data. " \
                     "Please be sure you used the right admission number and try again. "
 CONN_TIMEOUT_TEXT = "National Examination Agency system could not be connected. " \
@@ -22,8 +23,9 @@ IS_SELECTED = 'IsSelected'
 logging.basicConfig(format="%(levelname)s:%(name)s:%(asctime)s: %(message)s")
 
 # setup reusable request objects
-profile_request = profile_request_params()
-country_request = country_request_params()
+# profile_request = profile_request_params()
+# country_request = country_request_params()
+campus_request = campus_request_params(None)
 
 
 async def on_request_start(session, trace_config_ctx, params):
@@ -46,75 +48,93 @@ async def get_student_info(admission_number):
     trace_config = aiohttp.TraceConfig()
     trace_config.on_request_start.append(on_request_start)
     async with aiohttp.ClientSession(trace_configs=[trace_config]) as session:
+        # campus_request = await campus_request_params(session)
+        # print('s.cookies: ', session.cookie_jar)
         # set student admission number for student profile request
-        profile_request.data['admissionNumber'] = admission_number
+        campus_request.data['Registration_Number'] = str(admission_number)
 
         try:
             # request student profile to get system student id and student name
-            profile_response = await session.request(
-                profile_request.method, profile_request.url, headers=profile_request.headers,
-                cookies=profile_request.cookies, data=profile_request.data, raise_for_status=True)
+            response = await session.request(
+                campus_request.method, campus_request.url, headers=campus_request.headers,
+                data=campus_request.data, cookies=campus_request.cookies, raise_for_status=True)
 
             # validate and extract profile data from response
-            profile_json = await profile_response.json()
-            if len(profile_json) != 1:  # unexpected profile json
+            result_json = await response.json()
+            student_data = result_json.get('s')
+            if student_data is None:  # unexpected profile json
                 logging.warning(
-                    f"Profile response json has unexpected structure: profile_json={profile_json}\n"
+                    f"Student data in response json has unexpected structure: student_data={result_json}\n"
                     f"Request for admission_number: {admission_number}")
                 return True, BAD_RESPONSE_TEXT
             else:
-                profile_data = profile_json[0]
+                # get system student id from profile data
+                full_name = student_data.get('fn')
 
-            # get system student id from profile data
-            student_id = profile_data.get(STUDENT_ID)
-
-            # validate extracted student id
-            if student_id is None:  # could not get student id from profile json
+            mdeba_data = result_json.get('m')
+            if mdeba_data is None:
                 logging.warning(
-                    f"Profile data doesn't contain expected id: profile_data={profile_data}\n"
+                    f"No mdeba in response json has unexpected structure: mdeba_data={result_json}\n"
                     f"Request for admission_number: {admission_number}")
-                return True, BAD_RESPONSE_TEXT
+                return True, NO_MDEBA_DATA_TEXT
+            if isinstance(mdeba_data, list):
+                if len(mdeba_data) != 1:
+                    logging.warning(
+                        f"No mdeba in response json has unexpected structure: mdeba_data={result_json}\n"
+                        f"Request for admission_number: {admission_number}")
+                    return True, NO_MDEBA_DATA_TEXT
+                mdeba_data = mdeba_data[0]
+                hager = mdeba_data.get('U').strip()
+                hager_choice = mdeba_data.get('U_n')
+                field = mdeba_data.get('FoS')
+                field_choice = mdeba_data.get('FS_n')
+                simple = False
+            else:
+                hager = mdeba_data.get('U')
+                simple = True
+                hager_choice = None
+                field = None
+                field_choice = None
 
-            # set student id and setup country request
-            country_request.params['id'] = student_id
-
-            # send request to get country data of student
-            country_response = await session.request(
-                country_request.method, country_request.url, headers=country_request.headers,
-                params=country_request.params, raise_for_status=True
-            )
-
-            # extract country data of student
-            country_data = await country_response.json()
-
-            # validate extracted country data
-            if len(country_data) < 1:  # unexpected country json
-                logging.warning(
-                    f"Country response json has unexpected structure: country_data={country_data}\n"
-                    f"Request for admission_number: {admission_number}, student_id: {student_id}")
-                return True, BAD_RESPONSE_TEXT
         except requests.exceptions.ConnectTimeout:  # safe to retry connection
-            logging.warning(f"RequestException for admission_number: {admission_number}", exc_info=True)
+            logging.warning(
+                f"RequestException for admission_number: {admission_number}", exc_info=True)
             return True, CONN_TIMEOUT_TEXT
         except requests.exceptions.ReadTimeout:  # server did not send any data in allotted time
-            logging.warning(f"RequestException for admission_number: {admission_number}", exc_info=True)
+            logging.warning(
+                f"RequestException for admission_number: {admission_number}", exc_info=True)
             return True, BAD_RESPONSE_TEXT
         except requests.exceptions.ConnectionError:
-            logging.warning(f"RequestException for admission_number: {admission_number}", exc_info=True)
+            logging.warning(
+                f"RequestException for admission_number: {admission_number}", exc_info=True)
             return True, REQUEST_EXCEPTION_TEXT
         except requests.exceptions.HTTPError:  # includes raise_for_status() errors
-            logging.warning(f"RequestException for admission_number: {admission_number}", exc_info=True)
+            logging.warning(
+                f"RequestException for admission_number: {admission_number}", exc_info=True)
             return True, BAD_RESPONSE_TEXT
         except requests.exceptions.RequestException:  # catch all for requests exception
-            logging.warning(f"RequestException for admission_number: {admission_number}", exc_info=True)
+            logging.warning(
+                f"RequestException for admission_number: {admission_number}", exc_info=True)
+            return True, REQUEST_EXCEPTION_TEXT
+        except Exception:
+            logging.warning(
+                f"Exception for admission_number: {admission_number}", exc_info=True)
             return True, REQUEST_EXCEPTION_TEXT
 
         # create appropriate result message text
-        message_text = create_result_text(profile_data, country_data)
+        message_text = create_mdeba_text(
+            full_name, hager, hager_choice, field, field_choice, simple)
         # print('text: ', message_text)
 
         # join the lines above to create the message text
         return False, message_text
+
+
+def create_mdeba_text(full_name, hager, hager_choice, field, field_choice, simple=False):
+    if not simple:
+        return f"Name: {full_name}\n- You are assigned at **{hager}**, your number {hager_choice} country choice.\n - Your assigned field is **{field}**, your number {field_choice} field choice"
+    else:
+        return f"Name: {full_name}\n- You are assigned at **{hager}**"
 
 
 def create_result_text(profile_data, country_data):
